@@ -19,6 +19,11 @@
 #include "BeeftextGlobals.h"
 #include "BeeftextConstants.h"
 #include "XMiLib/Exception.h"
+#include <QClipboard>
+#include <QDate>
+#include <QDateTime>
+#include <QGuiApplication>
+#include <QTime>
 #include <utility>
 
 
@@ -53,6 +58,36 @@ QString const kPlaceholderElision = "..."; ///< The elision text for placeholder
 
 
 QString const kPropUseHtml = "useHtml";
+
+
+//******************************************************************************************************************************
+//**********************
+/// \param[in] text The text containing dynamic variables.
+/// \return The text where dynamic variables have been resolved.
+//******************************************************************************************************************************
+//**********************
+static QString resolveDynamicVariables(QString text) {
+    QClipboard *clipboard = QGuiApplication::clipboard();
+    QString const clipboardText = clipboard ? clipboard->text() : QString();
+
+    struct Replacement {
+        QString token;
+        QString value;
+    };
+
+    QList<Replacement> const replacements {
+        { QStringLiteral("{{date}}"), QDate::currentDate().toString("yyyy-MM-dd") },
+        { QStringLiteral("{{time}}"), QTime::currentTime().toString("HH:mm") },
+        { QStringLiteral("{{datetime}}"), QDateTime::currentDateTime().toString(Qt::ISODate) },
+        { QStringLiteral("{{clipboard}}"), clipboardText },
+        { QStringLiteral("{{username}}"), QString::fromLocal8Bit(qgetenv("USERNAME")) }
+    };
+
+    for (Replacement const &replacement: replacements)
+        text.replace(replacement.token, replacement.value, Qt::CaseInsensitive);
+
+    return text;
+}
 
 
 //****************************************************************************************************************************************************
@@ -556,7 +591,7 @@ QString Combo::evaluatedSnippet(bool &outCancelled, QSet<QString> const &forbidd
     while (true) {
         QRegularExpressionMatch match = constants::kVariableRegExp.match(remainingText);
         if (!match.hasMatch())
-            return result += remainingText;
+            break;
 
         QString variable = match.captured(1);
         qint32 const pos = qint32(match.capturedStart(0));
@@ -570,6 +605,9 @@ QString Combo::evaluatedSnippet(bool &outCancelled, QSet<QString> const &forbidd
         if (outCancelled)
             return QString();
     }
+
+    result += remainingText;
+    return resolveDynamicVariables(result);
 }
 
 
